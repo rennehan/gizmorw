@@ -1,2 +1,2 @@
-from .gizmo_rw import *
+from .gizmorw import *
 
