@@ -4,13 +4,15 @@ from collections import Iterable
 
 
 # Expects that the file_name does not have extension
-def read_gizmo_file(file_name, nfiles, part_types = 0):
+def read_gizmo_file(file_name, nfiles, part_types = 0, part_keys = 'ParticleIDs'):
     headers = {}
     part_dict = {}
 
     # Can take in a single number for the particle types to read
     if not isinstance(part_types, Iterable):
         part_types = [part_types]
+    if not isinstance(part_keys, Iterable):
+        part_keys = [part_keys]
 
     if nfiles > 1:
         # First, I will grab the total number of particles and the header information
@@ -18,13 +20,29 @@ def read_gizmo_file(file_name, nfiles, part_types = 0):
             for key in f['Header'].attrs:
                 headers.update({key: f['Header'].attrs[key]})
 
-            tot_num_part = np.array(f['Header'].attrs['NumPart_Total'], dtype = np.uint32)
-            print('Total number of particles: ')
+            tot_num_part = np.array(f['Header'].attrs['NumPart_Total'], dtype = np.uint64)
+
+            # Check if this wasn't stored for some reason
+            if np.sum(tot_num_part) == 0 and np.sum(headers['NumPart_ThisFile']) > 0:
+                # Start with the values in the 0.hdf5 file, then add on the rest
+                tot_num_part = np.array(headers['NumPart_ThisFile'], dtype = np.uint64)
+                print('start tot_num_part[1]=%d' % tot_num_part[1])
+                for file_num in range(1,nfiles):
+                    f2 = h5py.File('%s.%s.hdf5' % (file_name, str(file_num)), 'r')
+                    tot_num_part += np.array(f2['Header'].attrs['NumPart_ThisFile'], dtype = np.uint64)
+                    f2.close()
+
+                print('Total number of particles (re-calculated): %d' % np.sum(tot_num_part))
+            elif np.sum(tot_num_part) == 0:
+                raise ValueError('There are no particles in NumPart_ThisFile or NumPart_Total!')
+            else:
+                print('Total number of particles: %d' % np.sum(tot_num_part))
 
             # Need to allocate the arrays beforehand, since we want all of the particles
             # properties in a single array (per property, for tot_num_part).
             for part_type in part_types:
                 pt = int(part_type)  # Be careful with arrays
+
                 if tot_num_part[pt] == 0:
                     continue
 
@@ -34,6 +52,8 @@ def read_gizmo_file(file_name, nfiles, part_types = 0):
                 print('%s: %d' % (part_key, tot_num_part[pt]))
 
                 for key in f[part_key]:
+                    if key not in part_keys:
+                        continue
                     full_key = '%s/%s' % (part_key, key)
                     data_shape = np.array(f[full_key]).shape
                     try:
@@ -60,6 +80,8 @@ def read_gizmo_file(file_name, nfiles, part_types = 0):
                     print('Index pointer idx_pointer[%d]=%d' % (pt, idx_pointer[pt]))
 
                     for key in f[part_key]:
+                        if key not in part_keys:
+                            continue
                         full_key = '%s/%s' % (part_key, key)
                         part_dict[part_key][key][idx_pointer[pt]:idx_pointer[pt] + num_part_this] = np.copy(np.array(f[full_key]))
 
@@ -79,6 +101,8 @@ def read_gizmo_file(file_name, nfiles, part_types = 0):
                 part_dict.update({part_key: {}})
 
                 for key in f[part_key]:
+                    if key not in part_keys:
+                        continue
                     full_key = '%s/%s' % (part_key, key)
                     part_dict[part_key].update({key: np.array(f[full_key])})
 
