@@ -1,6 +1,6 @@
 import h5py
 import numpy as np
-from collections import Iterable
+from collections.abc import Iterable
 
 
 # Expects that the file_name does not have extension
